@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 from typing import Dict, Any
 from langchain_openai import ChatOpenAI
 from prompts import (
@@ -6,7 +7,7 @@ from prompts import (
     OPS_ANALYSIS_PROMPT,
     PLANNER_PROMPT,
     PLANNER_REVISION_PROMPT,
-    REPORT_PROMPT,
+    REPORT_NARRATIVE_PROMPT,
 )
 
 llm = ChatOpenAI(
@@ -42,10 +43,6 @@ def run_planner_agent(
     allocation_summary: str,
     audit_feedback: str = "",
 ) -> str:
-    """
-    First call: empty audit_feedback -> use PLANNER_PROMPT.
-    Revision call: non-empty audit_feedback -> use PLANNER_REVISION_PROMPT.
-    """
     if audit_feedback:
         return llm.invoke(PLANNER_REVISION_PROMPT.format_messages(
             business_context=business_context,
@@ -63,25 +60,52 @@ def run_planner_agent(
         )).content
 
 
-def run_report_agent(
-    business_context: str,
-    kpis: Dict[str, Any],
-    anomaly_highlights: str,
+def run_report_narrative_agent(
+    *,
     weather_summary: str,
     allocation_summary: str,
     total_penalty: int,
     dispatch_plan: str,
-    audit_trail: str,
     final_audit_passed: bool,
-) -> str:
-    return llm.invoke(REPORT_PROMPT.format_messages(
-        business_context=business_context,
-        kpis=kpis,
-        anomaly_highlights=anomaly_highlights,
+) -> Dict[str, str]:
+    """
+    Day 6: ReportAgent now produces SHORT narrative blocks only — the layout
+    is rendered deterministically in Python. Returns a dict with keys:
+      - executive_recommendation (2-3 sentences)
+      - top_risks (3 bullets)
+      - top_actions (3 bullets)
+    """
+    raw = llm.invoke(REPORT_NARRATIVE_PROMPT.format_messages(
         weather_summary=weather_summary,
         allocation_summary=allocation_summary,
         total_penalty=total_penalty,
         dispatch_plan=dispatch_plan,
-        audit_trail=audit_trail,
         final_audit_passed=final_audit_passed,
     )).content
+
+    # The LLM returns JSON. Be defensive about code-fence wrapping.
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        # Strip the first line and trailing fence
+        lines = cleaned.split("\n")
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        cleaned = "\n".join(lines).strip()
+
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Fallback if model didn't produce valid JSON
+        parsed = {
+            "executive_recommendation": "(narrative generation failed — see raw output)",
+            "top_risks": "- (fallback)",
+            "top_actions": "- (fallback)",
+        }
+
+    return {
+        "executive_recommendation": str(parsed.get("executive_recommendation", "")),
+        "top_risks": str(parsed.get("top_risks", "")),
+        "top_actions": str(parsed.get("top_actions", "")),
+    }

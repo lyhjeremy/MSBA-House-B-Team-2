@@ -13,9 +13,15 @@ from tools.weather_tools import (
 )
 from tools.resources import load_resource_pools
 from tools.allocator import allocate, format_allocation_for_prompt
+from tools.report_renderer import render_report
 from tools.email_tools import send_email_smtp
-from auditor import run_audit, format_audit_for_report
-from agents import run_context_agent, run_ops_agent, run_planner_agent, run_report_agent
+from auditor import run_audit
+from agents import (
+    run_context_agent,
+    run_ops_agent,
+    run_planner_agent,
+    run_report_narrative_agent,
+)
 
 load_dotenv()
 
@@ -27,7 +33,7 @@ class AppState(TypedDict, total=False):
     pdf_path: str
     csv_path: str
     resources_path: str
-    demo_mode: bool                # Day 5: trigger the audit loop reliably for demo
+    demo_mode: bool
 
     business_context: str
 
@@ -51,6 +57,7 @@ class AppState(TypedDict, total=False):
     audit_feedback: str
     retry_count: int
 
+    report_narrative: Dict[str, str]
     report_html: str
 
 
@@ -175,28 +182,30 @@ def node_increment_retry(state: AppState) -> AppState:
 
 
 def node_report(state: AppState) -> AppState:
-    audit_report = state.get("audit_report", {})
-    audit_history = state.get("audit_history", [])
-    trail_lines = []
-    for i, attempt in enumerate(audit_history):
-        trail_lines.append(f"Attempt {i + 1}: passed={attempt['passed']}, "
-                           f"violations={len(attempt['violations'])}")
-        for v in attempt["violations"]:
-            trail_lines.append(f"  - [{v['severity']}] ({v['check_id']}) {v['message']}")
-    audit_trail = "\n".join(trail_lines) if trail_lines else "(no audit attempts recorded)"
-
-    html = run_report_agent(
-        business_context=state.get("business_context", ""),
-        kpis=state.get("csv_kpis", {}),
-        anomaly_highlights=state.get("excluded_md", "(none)"),
+    """Day 6: produce HTML via deterministic template + LLM-written narrative blocks."""
+    # 1) LLM writes the short prose blocks
+    narrative = run_report_narrative_agent(
         weather_summary=state.get("weather_summary", ""),
         allocation_summary=state.get("allocation_summary", ""),
         total_penalty=state.get("total_penalty", 0),
         dispatch_plan=state.get("dispatch_plan", ""),
-        audit_trail=audit_trail,
-        final_audit_passed=audit_report.get("passed", False),
+        final_audit_passed=state.get("audit_report", {}).get("passed", False),
     )
-    return {"report_html": html}
+
+    # 2) Renderer assembles the final HTML deterministically
+    html = render_report(
+        narrative=narrative,
+        csv_summary=state.get("csv_summary", {}),
+        csv_kpis=state.get("csv_kpis", {}),
+        weather_by_corridor=state.get("weather_by_corridor", {}),
+        allocation_result=state.get("allocation_result", {}),
+        total_penalty=state.get("total_penalty", 0),
+        audit_history=state.get("audit_history", []),
+        final_audit_passed=state.get("audit_report", {}).get("passed", False),
+        excluded_md=state.get("excluded_md", ""),
+    )
+
+    return {"report_narrative": narrative, "report_html": html}
 
 
 def node_email(state: AppState) -> AppState:

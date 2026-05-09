@@ -24,7 +24,6 @@ OPS_ANALYSIS_PROMPT = ChatPromptTemplate.from_messages([
      "Return:\n- Key findings (per corridor)\n- Cold-chain demand callouts\n- Data quality observations\n- Immediate actions for the Planner\n")
 ])
 
-# First-pass planner prompt
 PLANNER_PROMPT = ChatPromptTemplate.from_messages([
     ("system",
      "You are PlannerAgent. A deterministic allocator has already produced the optimal resource "
@@ -40,7 +39,7 @@ PLANNER_PROMPT = ChatPromptTemplate.from_messages([
      "Per-corridor weather risk:\n{weather_summary}\n\n"
      "DETERMINISTIC ALLOCATION (use these numbers verbatim):\n{allocation_summary}\n\n"
      "Return a structured plan covering:\n"
-     "1) Dispatch plan per corridor per day — restate the reefer/standard/driver assignment\n"
+     "1) Dispatch plan per corridor per day\n"
      "2) Travel-time buffer applied per corridor\n"
      "3) Cold-chain (reefer) allocation rationale\n"
      "4) Violations: name each corridor, day, bucket, units unfulfilled, penalty cost\n"
@@ -50,7 +49,6 @@ PLANNER_PROMPT = ChatPromptTemplate.from_messages([
      "8) Escalation flag if any corridor risk_score = 3\n")
 ])
 
-# Revision-pass planner prompt — fed when audit fails
 PLANNER_REVISION_PROMPT = ChatPromptTemplate.from_messages([
     ("system",
      "You are PlannerAgent revising a previous dispatch plan. The previous plan FAILED an automated "
@@ -73,31 +71,27 @@ PLANNER_REVISION_PROMPT = ChatPromptTemplate.from_messages([
      "5) Same structure as a normal plan (1-8 sections)\n")
 ])
 
-REPORT_PROMPT = ChatPromptTemplate.from_messages([
+
+# Day 6: Report agent produces SHORT structured prose only.
+# Layout, tables, badges, and styling are rendered in Python.
+REPORT_NARRATIVE_PROMPT = ChatPromptTemplate.from_messages([
     ("system",
-     "You are ReportAgent. Produce a crisp HTML report for leadership. Use headings, tables, and bullets. "
-     "Keep it skimmable in 30 seconds. Surface per-corridor differences clearly. "
-     "Include the total penalty score prominently. ALSO include the audit trail — "
-     "this transparency is a feature, not a bug. If the audit failed even after retries, that fact "
-     "should be visible to leadership at the top of the report."),
+     "You are ReportAgent. You write THREE short prose blocks for an executive dispatch report. "
+     "Layout, tables, and styling are handled separately — your job is the words.\n\n"
+     "RULES:\n"
+     "- Plain text only. No HTML, no markdown formatting beyond bullet hyphens.\n"
+     "- BE BRIEF. Executives scan for 30 seconds.\n"
+     "- Be concrete. Reference specific corridors, days, and numbers.\n"
+     "- Do NOT sanitize bad news.\n\n"
+     "Return ONLY a JSON object with these three keys (no preamble, no code fences):\n"
+     "  executive_recommendation: 2-3 sentences. The single most important thing leadership should know.\n"
+     "  top_risks: 3 short bullet lines, each starting with '-'. One risk per line, max 18 words each.\n"
+     "  top_actions: 3 short bullet lines, each starting with '-'. One concrete action per line, max 18 words each."),
     ("user",
-     "Inputs:\n\nBusiness context:\n{business_context}\n\n"
-     "Per-corridor KPIs:\n{kpis}\n\n"
-     "Excluded shipment rows (DQ):\n{anomaly_highlights}\n\n"
-     "Per-corridor weather risk:\n{weather_summary}\n\n"
-     "Resource allocation (deterministic):\n{allocation_summary}\n\n"
-     "TOTAL PENALTY SCORE: {total_penalty} points\n\n"
-     "Dispatch plan (planner narrative):\n{dispatch_plan}\n\n"
-     "AUDIT TRAIL (history across all attempts):\n{audit_trail}\n\n"
-     "FINAL AUDIT STATUS: {final_audit_passed}\n\n"
-     "Generate an executive HTML report with: "
-     "(1) Executive summary box — total penalty, top 3 risks, top 3 actions, AND a 'Plan Validation' "
-     "    badge: GREEN if audit passed, AMBER if passed after revision, RED if failed after retries, "
-     "(2) Per-corridor KPI table, "
-     "(3) Per-corridor weather risk table, "
-     "(4) Resource allocation table with violations called out, "
-     "(5) Dispatch plan narrative, "
-     "(6) Audit trail section showing each attempt and what was caught, "
-     "(7) Data quality / excluded rows summary. "
-     "Return ONLY the raw HTML — no markdown code fences, no leading ```html.")
+     "Per-corridor weather:\n{weather_summary}\n\n"
+     "Allocation result:\n{allocation_summary}\n\n"
+     "Total penalty score: {total_penalty} points\n\n"
+     "Final audit passed: {final_audit_passed}\n\n"
+     "Planner's full dispatch plan (use as context — DO NOT echo it back):\n{dispatch_plan}\n\n"
+     "Return the JSON object now.")
 ])
