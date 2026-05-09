@@ -1,74 +1,43 @@
+"""
+CSV analysis tool — now backed by the reconciliation engine.
+
+Replaces the old generic Isolation Forest approach with playbook-grounded
+reconciliation against the Item Master (Appendix A).
+"""
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Any, List
 import pandas as pd
-import numpy as np
-from sklearn.ensemble import IsolationForest
+
+from tools.reconciliation import (
+    reconcile_shipments,
+    ReconciliationResult,
+    format_reconciliation_for_prompt,
+)
 
 
 @dataclass
 class CsvAnalysisResult:
     summary: Dict[str, Any]
-    kpis: Dict[str, Any]
-    anomalies: pd.DataFrame
-    cleaned_shape: Tuple[int, int]
-    numeric_cols: List[str]
+    kpis: Dict[str, Any]                # nested: kpis_by_corridor
+    anomalies: pd.DataFrame             # excluded rows (DQ violations)
+    reconciliation_log: List[Dict[str, Any]]
+    clean_df: pd.DataFrame
+    formatted_for_prompt: str
 
 
 def analyze_csv(csv_path: str) -> CsvAnalysisResult:
-    df = pd.read_csv(csv_path)
-    original_shape = df.shape
-
-    df.columns = [c.strip() for c in df.columns]
-    df = df.dropna(how="all").copy()
-
-    # Try to parse any column that looks like a date
-    for c in df.columns:
-        if "date" in c.lower() or "time" in c.lower():
-            try:
-                df[c] = pd.to_datetime(df[c], errors="ignore")
-            except Exception:
-                pass
-
-    summary = {
-        "rows_original": int(original_shape[0]),
-        "cols_original": int(original_shape[1]),
-        "rows_after_drop_empty": int(df.shape[0]),
-        "missingness_top": df.isna().mean().sort_values(ascending=False).head(10).to_dict(),
-        "column_dtypes": {c: str(t) for c, t in df.dtypes.items()},
-        "columns": list(df.columns),
-    }
-
-    # Generic KPI examples: you will tailor later once we see headers
-    kpis: Dict[str, Any] = {}
-    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-
-    if numeric_cols:
-        kpis["numeric_columns_count"] = len(numeric_cols)
-        kpis["rows_count"] = int(df.shape[0])
-
-    # Anomalies on numeric cols
-    anomalies = pd.DataFrame()
-    if len(numeric_cols) >= 2 and df.shape[0] >= 20:
-        X = df[numeric_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0).values
-        model = IsolationForest(
-            n_estimators=200,
-            contamination=0.03,
-            random_state=42,
-        )
-        preds = model.fit_predict(X)
-        scores = model.decision_function(X)
-
-        df_anom = df.copy()
-        df_anom["is_anomaly"] = (preds == -1)
-        df_anom["anomaly_score"] = scores
-
-        anomalies = df_anom[df_anom["is_anomaly"]].sort_values("anomaly_score").head(25)
+    """
+    Run reconciliation against the Item Master, then return a structured
+    result that downstream agents can consume.
+    """
+    rec: ReconciliationResult = reconcile_shipments(csv_path)
 
     return CsvAnalysisResult(
-        summary=summary,
-        kpis=kpis,
-        anomalies=anomalies,
-        cleaned_shape=df.shape,
-        numeric_cols=numeric_cols,
+        summary=rec.summary,
+        kpis=rec.kpis_by_corridor,
+        anomalies=rec.excluded_df,
+        reconciliation_log=rec.reconciliation_log,
+        clean_df=rec.clean_df,
+        formatted_for_prompt=format_reconciliation_for_prompt(rec),
     )

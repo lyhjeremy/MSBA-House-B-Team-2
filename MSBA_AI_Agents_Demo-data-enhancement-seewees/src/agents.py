@@ -14,29 +14,50 @@ llm = ChatOpenAI(
 def run_context_agent(snippets: str) -> str:
     return llm.invoke(PDF_CONTEXT_PROMPT.format_messages(snippets=snippets)).content
 
-def run_ops_agent(summary: Dict[str, Any], kpis: Dict[str, Any], anomalies_md: str) -> str:
+
+def run_ops_agent(
+    summary: Dict[str, Any],
+    kpis: Dict[str, Any],
+    anomalies_md: str,
+    formatted: str = "",
+) -> str:
     return llm.invoke(OPS_ANALYSIS_PROMPT.format_messages(
-        summary=summary, kpis=kpis, anomalies_md=anomalies_md
+        summary=summary,
+        kpis=kpis,
+        anomalies_md=anomalies_md,
+        formatted=formatted,
     )).content
 
-def run_planner_agent(business_context: str, ops_insights: str, weather_risk: Dict[str, Any]) -> str:
+
+def run_planner_agent(
+    business_context: str,
+    ops_insights: str,
+    weather_summary: str,
+    allocation_summary: str,
+) -> str:
     return llm.invoke(PLANNER_PROMPT.format_messages(
         business_context=business_context,
         ops_insights=ops_insights,
-        weather_risk=weather_risk
+        weather_summary=weather_summary,
+        allocation_summary=allocation_summary,
     )).content
+
 
 def run_report_agent(
     business_context: str,
     kpis: Dict[str, Any],
     anomaly_highlights: str,
-    weather_risk: Dict[str, Any],
+    weather_summary: str,
+    allocation_summary: str,
+    total_penalty: int,
     dispatch_plan: str,
 ) -> str:
     return llm.invoke(REPORT_PROMPT.format_messages(
         business_context=business_context,
         kpis=kpis,
         anomaly_highlights=anomaly_highlights,
-        weather_risk=weather_risk,
-        dispatch_plan=dispatch_plan
+        weather_summary=weather_summary,
+        allocation_summary=allocation_summary,
+        total_penalty=total_penalty,
+        dispatch_plan=dispatch_plan,
     )).content
