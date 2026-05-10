@@ -7,6 +7,7 @@ load_dotenv()  # must be before importing graph/agents
 from tracing import init_langsmith_tracing
 init_langsmith_tracing()  # must be before importing graph/agents
 from graph import build_graph
+from tools.pdf_exporter import html_to_pdf
 
 
 if __name__ == "__main__":
@@ -33,8 +34,7 @@ if __name__ == "__main__":
     print("\n=== RECONCILIATION SUMMARY ===")
     print(final.get("csv_summary", {}))
 
-    print("\n=== ALLOCATION TOTAL PENALTY: "
-          f"{final.get('total_penalty', 0)} points ===")
+    print(f"\n=== ALLOCATION TOTAL PENALTY: {final.get('total_penalty', 0)} points ===")
 
     print("\n=== AUDIT HISTORY ===")
     for i, attempt in enumerate(final.get("audit_history", [])):
@@ -45,18 +45,26 @@ if __name__ == "__main__":
     print(f"FINAL AUDIT: passed={final_audit.get('passed')} "
           f"after {final.get('retry_count', 0)} retries")
 
-    # Save the report to disk
+    # Save HTML
     report_html = final.get("report_html", "")
     if report_html:
         os.makedirs("outputs", exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         suffix = "_demo" if demo_mode else ""
-        report_path = f"outputs/dispatch_report_{timestamp}{suffix}.html"
-        with open(report_path, "w", encoding="utf-8") as f:
-            f.write(report_html)
+        html_path = f"outputs/dispatch_report_{timestamp}{suffix}.html"
+        pdf_path  = f"outputs/dispatch_report_{timestamp}{suffix}.pdf"
 
-        abs_path = os.path.abspath(report_path)
-        print(f"\n=== REPORT SAVED ===")
-        print(f"  Path: {abs_path}")
-        print(f"  Open in browser: file:///{abs_path.replace(os.sep, '/')}")
-        print(f"  Or run:  start {report_path}")
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(report_html)
+        abs_html = os.path.abspath(html_path)
+
+        print(f"\n=== HTML SAVED ===")
+        print(f"  {abs_html}")
+
+        # Auto-export PDF (silently no-op if Playwright/Chromium missing)
+        print("\n=== PDF EXPORT ===")
+        result = html_to_pdf(html_path, pdf_path, paper_format="Letter", margin="0.5in")
+        if result:
+            print(f"  {result}")
+        else:
+            print(f"  (skipped — see message above; HTML still available for manual print)")
