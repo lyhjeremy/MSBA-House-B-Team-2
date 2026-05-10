@@ -1,20 +1,31 @@
-# secrets
+# Secrets
 .env
+.env.local
 
-# python
+# Virtual environments
 .venv/
+venv/
+env/
+
+# Python cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# local stores
+# Vector store cache (regenerated locally)
 chroma_db/
-*.sqlite
-*.db
 
-# macOS
-.DS_Store
-
-# logs
-*.log
-
+# Generated reports
 outputs/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Playwright browser cache (on some systems)
+ms-playwright/
