@@ -30,8 +30,8 @@ Our system ingests messy CSV shipment data, reconciles it against a canonical it
 
 ```bash
 # 1. Clone the repo
-git clone <your-repo-url>
-cd MSBA_AI_Agents_Demo-data-enhancement-seewees
+git clone https://github.com/lyhjeremy/MSBA-B2
+cd MSBA-B2\SeeWeeS_Multi_Agent
 
 # 2. Create and activate a virtual environment
 python -m venv .venv
