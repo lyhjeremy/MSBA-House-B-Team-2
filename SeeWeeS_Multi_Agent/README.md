@@ -20,52 +20,169 @@ Our system ingests messy CSV shipment data, reconciles it against a canonical it
 
 ---
 
-## Quick start
+## Quick Start
 
 ### Prerequisites
-- Python 3.11 or 3.12
-- An OpenAI API key with billing enabled (~$5 of credits is more than enough)
 
-### Setup
+| Requirement | Windows | macOS |
+|---|---|---|
+| Python version | 3.11 or 3.12 | 3.11 or 3.12 |
+| OpenAI API key | Required (billing enabled, ~$5 credits) | Required (billing enabled, ~$5 credits) |
 
-```bash
-# 1. Clone the repo
+**Check your Python version:**
+
+- **Windows (PowerShell):** `python --version`
+- **macOS (Terminal):** `python3 --version`
+
+If Python is not installed:
+- **Windows:** Download from [python.org](https://www.python.org/downloads/) — check "Add Python to PATH" during installation
+- **macOS:** Install via Homebrew: `brew install python@3.11` or download from [python.org](https://www.python.org/downloads/)
+
+---
+
+### Step 1 — Clone the repo
+
+**Windows (PowerShell):**
+```powershell
 git clone https://github.com/lyhjeremy/MSBA-B2
 cd MSBA-B2\SeeWeeS_Multi_Agent
-
-# 2. Create and activate a virtual environment
-python -m venv .venv
-# Windows PowerShell:
-.venv\Scripts\Activate.ps1
-# macOS / Linux:
-source .venv/bin/activate
-
-# 3. Install dependencies
-pip install -r requirements.txt
-
-# 4. Install the headless browser used for PDF export (one-time, ~150MB)
-playwright install chromium
-
-# 5. Configure secrets
-cp .env.example .env
-# Open .env and paste your OpenAI API key
 ```
 
-### Run
-
-From the project root, with the venv active:
-
+**macOS (Terminal):**
 ```bash
-# Normal mode — audit usually passes on the first try
-python src/main.py
+git clone https://github.com/lyhjeremy/MSBA-B2
+cd MSBA-B2/SeeWeeS_Multi_Agent
+```
 
-# Demo mode — engineered to trigger the audit-loop self-correction
+---
+
+### Step 2 — Create and activate a virtual environment
+
+**Windows (PowerShell):**
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+> **Windows note:** If you get an error like *"running scripts is disabled on this system"*, run this first, then try again:
+> ```powershell
+> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+> ```
+
+**macOS (Terminal):**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+Once activated, your terminal prompt should start with `(.venv)`.
+
+---
+
+### Step 3 — Install dependencies
+
+**Windows & macOS (same command):**
+```bash
+pip install -r requirements.txt
+```
+
+> **macOS note:** If `pip` isn't found, use `pip3` instead.
+
+---
+
+### Step 4 — Install the headless browser for PDF export
+
+This is a one-time install (~150 MB) used to export the HTML report to PDF.
+
+**Windows & macOS (same command):**
+```bash
+playwright install chromium
+```
+
+> **macOS note:** If you see a permissions error, try: `python3 -m playwright install chromium`
+
+---
+
+### Step 5 — Configure your API key
+
+**Windows (PowerShell):**
+```powershell
+copy .env.example .env
+notepad .env
+```
+
+**macOS (Terminal):**
+```bash
+cp .env.example .env
+open -e .env
+```
+
+In the `.env` file, replace the placeholder with your actual OpenAI API key:
+```
+OPENAI_API_KEY=sk-your-key-here
+```
+
+Save and close the file.
+
+---
+
+### Step 6 — Run the system
+
+Make sure your virtual environment is active (you should see `(.venv)` in your prompt). Then:
+
+**Windows (PowerShell):**
+```powershell
+python src/main.py
+```
+
+**macOS (Terminal):**
+```bash
+python src/main.py
+```
+
+**Demo mode** — engineered to trigger the audit-loop self-correction:
+
+**Windows:**
+```powershell
+python src/main.py --demo-loop
+```
+
+**macOS:**
+```bash
 python src/main.py --demo-loop
 ```
 
 Outputs land in `outputs/`:
 - `dispatch_report_<timestamp>.html` — view in any browser
 - `dispatch_report_<timestamp>.pdf` — one-page letter portrait, ready to share
+
+---
+
+## Standalone Tests (no OpenAI cost)
+
+Each major component has a free test you can run to verify everything works before burning API credits.
+
+**Windows (PowerShell):**
+```powershell
+python src/test_reconciliation.py
+python src/test_weather.py
+python src/test_allocator.py
+python src/test_auditor.py
+```
+
+**macOS (Terminal):**
+```bash
+python src/test_reconciliation.py
+python src/test_weather.py
+python src/test_allocator.py
+python src/test_auditor.py
+```
+
+What each test covers:
+- `test_reconciliation.py` — Item Master reconciliation
+- `test_weather.py` — Per-corridor weather (hits Open-Meteo only, no OpenAI)
+- `test_allocator.py` — Resource allocator with mocked weather
+- `test_auditor.py` — Auditor checks with mocked plans
 
 ---
 
@@ -85,7 +202,7 @@ See [`TECHNICAL.md`](TECHNICAL.md) for the full architecture and design rational
 
 ---
 
-## Project structure
+## Project Structure
 
 ```
 .
@@ -113,7 +230,7 @@ See [`TECHNICAL.md`](TECHNICAL.md) for the full architecture and design rational
 │   │   ├── reconciliation.py              # The Item Master reconciliation engine
 │   │   ├── report_renderer.py             # HTML template (CSS + deterministic data binding)
 │   │   ├── resources.py                   # Loads Resource_availability_48h.csv
-│   │   └── weather_tools.py               # Open-Meteo per waypoint, parallel
+│   │   └── weather_tools.py              # Open-Meteo per waypoint, parallel
 │   ├── test_allocator.py                  # Standalone test (no OpenAI calls)
 │   ├── test_auditor.py                    # Standalone test (no OpenAI calls)
 │   ├── test_reconciliation.py             # Standalone test (no OpenAI calls)
@@ -127,21 +244,6 @@ See [`TECHNICAL.md`](TECHNICAL.md) for the full architecture and design rational
 ├── TECHNICAL.md                           # Full technical & business write-up
 └── requirements.txt
 ```
-
----
-
-## Standalone tests (no OpenAI cost)
-
-Each major component has a test you can run for free:
-
-```bash
-python src/test_reconciliation.py     # Item Master reconciliation
-python src/test_weather.py            # Per-corridor weather (hits Open-Meteo only)
-python src/test_allocator.py          # Resource allocator with mocked weather
-python src/test_auditor.py            # Auditor checks with mocked plans
-```
-
-Useful for verifying the project works end-to-end before burning API credits.
 
 ---
 

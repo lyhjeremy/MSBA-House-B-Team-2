@@ -2,11 +2,16 @@
 HTML report renderer for SeeWeeS dispatch reports.
 
 Day 6 fixes:
-  - Bullet lists accept both strings and Python lists (LLM sometimes returns either)
+  - Bullet lists accept strings, Python lists, AND stringified lists
+    (e.g. "['- a', '- b']" which the LLM sometimes emits as a single string)
+  - Mixed-separator strings (newlines, semicolons, " - " inline) split correctly
   - Print CSS sized to fit one letter-portrait page at 0.4in margin
   - Companion pdf_exporter uses 0.4in margin to match @page
 """
 from __future__ import annotations
+import ast
+import json
+import re
 from typing import Dict, Any, List, Union
 from datetime import datetime
 import html as html_lib
@@ -365,46 +370,114 @@ def _escape_paragraph(text: str) -> str:
 
 def _render_bullet_list(value: Union[str, List[Any], None]) -> str:
     """
-    Produce <ul><li>...</li></ul> from either:
-      - a string with bullet/newline-separated lines, OR
-      - a Python list of strings (which is what the LLM sometimes returns
-        when asked for a 'bullet list' inside a JSON field).
+    Produce <ul><li>...</li></ul> from any of these forms the LLM might emit:
+      - a Python list of strings:        ["- a", "- b"]
+      - a newline-separated string:      "- a\n- b"
+      - a stringified Python list:       "['- a', '- b']"
+      - a JSON array string:             '["- a", "- b"]'
+      - a list containing one stringified list element:
+            ["['- a', '- b']"]   <-- the bug seen in the PDF
+      - a semicolon- or " - "-joined string
+
+    All bullet prefixes ("- ", "* ", "• ", "1. ", "1) ") and stray quotes are
+    stripped before rendering.
     """
     if value is None:
         return "<p>(none)</p>"
 
-    items: List[str] = []
-
-    if isinstance(value, list):
-        for raw in value:
-            line = str(raw).strip()
-            if not line:
-                continue
-            items.append(_strip_bullet_prefix(line))
-    elif isinstance(value, str):
-        for raw in value.splitlines():
-            line = raw.strip()
-            if not line:
-                continue
-            items.append(_strip_bullet_prefix(line))
-    else:
-        items.append(str(value))
+    items = _flatten_to_items(value)
+    items = [_clean_item(s) for s in items]
+    items = [s for s in items if s]
 
     if not items:
         return "<p>(none)</p>"
     return "<ul>" + "".join(f"<li>{html_lib.escape(it)}</li>" for it in items) + "</ul>"
 
 
+def _flatten_to_items(value: Any) -> List[str]:
+    """Recursively flatten the LLM's possibly-malformed input into a flat list of strings."""
+    if value is None:
+        return []
+
+    # If it's already a real list, recurse into each element to catch nested
+    # stringified lists (e.g. ["['a', 'b']"]).
+    if isinstance(value, list):
+        out: List[str] = []
+        for elem in value:
+            out.extend(_flatten_to_items(elem))
+        return out
+
+    if not isinstance(value, str):
+        return [str(value)]
+
+    text = value.strip()
+    if not text:
+        return []
+
+    # Stringified list detection: looks like "[...]"
+    if text.startswith("[") and text.endswith("]"):
+        parsed = _try_parse_listlike(text)
+        if parsed is not None:
+            return _flatten_to_items(parsed)
+
+    # Newline-separated → split on newlines
+    if "\n" in text:
+        return [line for line in (ln.strip() for ln in text.splitlines()) if line]
+
+    # Semicolon-separated → split on semicolons
+    if ";" in text and text.count(";") >= 1:
+        parts = [p.strip() for p in text.split(";")]
+        if len(parts) > 1:
+            return [p for p in parts if p]
+
+    # Inline " - " separator (e.g. "- a - b - c") → split on " - " but keep the
+    # first item's bullet (it'll be stripped later).
+    if text.startswith("- ") and text.count(" - ") >= 1:
+        chunks = re.split(r"\s+-\s+", text)
+        chunks = [c.strip() for c in chunks if c.strip()]
+        if len(chunks) > 1:
+            return chunks
+
+    return [text]
+
+
+def _try_parse_listlike(text: str) -> Union[List[Any], None]:
+    """Try ast.literal_eval first, then json.loads. Return None if both fail."""
+    try:
+        result = ast.literal_eval(text)
+        if isinstance(result, (list, tuple)):
+            return list(result)
+    except (ValueError, SyntaxError):
+        pass
+    try:
+        result = json.loads(text)
+        if isinstance(result, list):
+            return result
+    except (ValueError, json.JSONDecodeError):
+        pass
+    return None
+
+
+def _clean_item(line: str) -> str:
+    """Strip bullet prefixes, surrounding quotes, and stray punctuation."""
+    s = str(line).strip()
+    # Strip wrapping single/double quotes the LLM occasionally adds
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in ("'", '"'):
+        s = s[1:-1].strip()
+    return _strip_bullet_prefix(s)
+
+
 def _strip_bullet_prefix(line: str) -> str:
     """Remove leading '- ', '* ', '• ', or '1.' / '1)' from a bullet line."""
-    for prefix in ("- ", "* ", "• "):
-        if line.startswith(prefix):
-            return line[len(prefix):]
-    if line[:2].rstrip(".)").isdigit():
-        parts = line.split(".", 1) if "." in line[:3] else line.split(")", 1)
-        if len(parts) == 2:
-            return parts[1].strip()
-    return line
+    s = line.lstrip()
+    for prefix in ("- ", "* ", "• ", "– ", "— "):
+        if s.startswith(prefix):
+            return s[len(prefix):].strip()
+    # Numbered: "1.", "12)" etc.
+    m = re.match(r"^\d{1,2}[.\)]\s+(.*)", s)
+    if m:
+        return m.group(1).strip()
+    return s
 
 
 # =====================================================================
