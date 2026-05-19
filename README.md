@@ -25,6 +25,3 @@ We redesigned the SeeWeeS Specialty ops-reporting prototype from a linear LangCh
 ## Getting Started
 
 All source code, data, documentation, and setup instructions live in the [`SeeWeeS_Multi_Agent/`](./SeeWeeS_Multi_Agent) subfolder. Head there for the full README, quick-start guide, and technical write-up.
-
-## Brief writeup
-See [agentic-ai-langgraph-article.md](./agentic-ai-langgraph-article.md) for the story behind the rebuild, the architecture, and the design rationale.
